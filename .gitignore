@@ -3,3 +3,5 @@ __pycache__/*
 config.yaml
 migrations/*
 db.sqlite
+Pipfile*
+secret.py

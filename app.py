@@ -10,9 +10,10 @@ from pytz import timezone
 import binascii
 import os
 from flask_migrate import Migrate
+from .secret import secret_key
 
 app = Flask(__name__)
-app.secret_key = 'FootlooseIsAwesome'
+app.secret_key = secret_key
 app.wsgi_app = ProxyFix(app.wsgi_app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
