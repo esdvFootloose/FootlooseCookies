@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, abort, render_template, redirect, url_for, Response
+from flask import Flask, request, jsonify, abort, redirect, url_for, Response
 from werkzeug.contrib.fixers import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
 import yaml
@@ -9,7 +9,6 @@ from datetime import datetime
 from pytz import timezone
 import binascii
 import os
-from sqlalchemy import and_
 from flask_migrate import Migrate
 
 app = Flask(__name__)
@@ -56,13 +55,21 @@ def init():
 
 
 ## util funcs
-def check_img_url(url):
-    r = requests.get(url)
+def validate_img_url(url):
+    try:
+        r = requests.get(url)
+    except:
+        return False
     if r.status_code != 200:
         return False
     if r.headers['Content-Type'].split('/')[0].lower() != "image":
         return False
 
+    return True
+
+def validate_session(session):
+    if datetime.now().timestamp() > session.timestamp.timestamp() + configs['sessiontimeout']:
+        return False
     return True
 
 def generate_token():
@@ -85,7 +92,7 @@ def index():
 
 @app.route('/cookies/list/')
 def cookie_list():
-    return jsonify([c.name for c in Cookie.query.all()])
+    return jsonify([(c.name, c.img) for c in Cookie.query.all()])
 
 @app.route('/cookies/suggest/')
 def cookie_suggest():
@@ -113,7 +120,7 @@ def cookie_add():
     if 'img' not in request.form or 'name' not in request.form:
         return abort(400)
 
-    if not check_img_url(request.form['img']):
+    if not validate_img_url(request.form['img']):
         return abort(400)
 
     if Cookie.query.filter_by(name=request.form['name']).count() != 0:
@@ -145,17 +152,20 @@ def cookie_rating(token):
     if 'user' not in request.form or 'rating' not in request.form:
         return abort(400)
 
-    if Session.query.filter_by(token=token).count() != 1:
-        return abort(404)
-
-    my_session = Session.query.filter_by(token=token).first()
-
     try:
         rating = int(request.form['rating'])
         if rating < 0 or rating > 5:
             return abort(400)
     except:
         return abort(400)
+
+    if Session.query.filter_by(token=token).count() != 1:
+        return abort(404)
+
+    my_session = Session.query.filter_by(token=token).first()
+
+    if not validate_session(my_session):
+        return abort(403)
 
     if Rating.query.filter_by(user= request.form['user'], session = my_session.id).count() != 0:
         return abort(403)
