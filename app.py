@@ -10,7 +10,8 @@ from pytz import timezone
 import binascii
 import os
 from flask_migrate import Migrate
-from .secret import secret_key
+from secret import secret_key
+from sqlalchemy.sql import func
 
 app = Flask(__name__)
 app.secret_key = secret_key
@@ -86,6 +87,15 @@ def admin_required(func):
         return func(*args, **kwargs)
     return func_wrapper
 
+def login_required(func):
+    @wraps(func)
+    def func_wrapper(*args, **kwargs):
+        user = request.headers.get('USER', None)
+        if user is None:
+            return abort(403)
+        return func(*args, **kwargs)
+    return func_wrapper
+
 ## end points
 @app.route('/')
 def index():
@@ -96,7 +106,9 @@ def cookie_list():
     return jsonify([(c.name, c.img) for c in Cookie.query.all()])
 
 @app.route('/cookies/suggest/')
+@login_required
 def cookie_suggest():
+    user = request.headers.get('USER')
     try:
         selected_cookie = random.choice(Cookie.query.all())
     except:
@@ -104,7 +116,7 @@ def cookie_suggest():
 
     token = generate_token()
 
-    new_session = Session(token=token, user="No user recorded", cookie=selected_cookie.id, timestamp=datetime.now(timezone('Europe/Amsterdam')))
+    new_session = Session(token=token, user=user, cookie=selected_cookie.id, timestamp=datetime.now(timezone('Europe/Amsterdam')))
 
     db.session.add(new_session)
     db.session.commit()
@@ -149,8 +161,10 @@ def cookie_admin():
     return "OK"
 
 @app.route('/cookies/rate/<token>/', methods=['PUT'])
+@login_required
 def cookie_rating(token):
-    if 'user' not in request.form or 'rating' not in request.form:
+    user = request.headers.get('USER')
+    if 'rating' not in request.form:
         return abort(400)
 
     try:
@@ -168,10 +182,24 @@ def cookie_rating(token):
     if not validate_session(my_session):
         return abort(403)
 
-    if Rating.query.filter_by(user= request.form['user'], session = my_session.id).count() != 0:
-        return abort(403)
+    ## if only session owner can rate enable this
+    # if Rating.query.filter_by(user=user, session = my_session.id).count() != 0:
+    #     return abort(403)
 
-    db.session.add(Rating(rating=rating, session=my_session.id, user=request.form['user'], cookie=my_session.cookie, timestamp=datetime.now(timezone('Europe/Amsterdam'))))
+    db.session.add(Rating(rating=rating, session=my_session.id, user=user, cookie=my_session.cookie, timestamp=datetime.now(timezone('Europe/Amsterdam'))))
     db.session.commit()
 
     return "OK"
+
+@app.route('/session/<token>/stats/')
+@login_required
+def session_stats(token):
+    # user = request.headers.get('USER')
+    session = Session.query.filter_by(token=token).first_or_404()
+    cookie = Cookie.query.filter_by(id=session.cookie).first_or_404()
+
+    return jsonify({
+        'cookie' : [cookie.name, cookie.img],
+        'numrating' : Rating.query.filter_by(session=session.id).count(),
+        'avgrating' : db.session.query(func.avg(Rating.rating)).filter(Rating.session == session.id).first()[0]
+    })
