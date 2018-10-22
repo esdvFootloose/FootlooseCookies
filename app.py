@@ -40,6 +40,14 @@ class Cookie(db.Model):
     ratings = db.relationship('Rating', backref='Cookie', lazy=True)
     sessions = db.relationship('Session', backref='Cookie', lazy=True)
 
+    def to_dict(self):
+        return {
+            'id'   : self.id,
+            'name' : self.name,
+            'img'  : self.img,
+        }
+
+
 class Session(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     token = db.Column(db.String(8), nullable=False, unique=True)
@@ -101,9 +109,12 @@ def login_required(func):
 def index():
     return 'welcome'
 
+### cookies endpoints
+
+@app.route('/cookies/')
 @app.route('/cookies/list/')
 def cookie_list():
-    return jsonify([(c.name, c.img) for c in Cookie.query.all()])
+    return jsonify([c.to_dict() for c in Cookie.query.all()])
 
 @app.route('/cookies/suggest/')
 @login_required
@@ -191,6 +202,18 @@ def cookie_rating(token):
 
     return "OK"
 
+@app.route('/cookies/<int:cookie_id>/stats/')
+@login_required
+def cookie_stats(cookie_id):
+    cookie = Cookie.query.filter_by(id=cookie_id).first_or_404()
+
+    return jsonify({
+        'cookie' : [cookie.name, cookie.img],
+        'numrating' : Rating.query.filter_by(cookie=cookie.id).count(),
+        'avgrating' : db.session.query(func.avg(Rating.rating)).filter(Rating.cookie == cookie.id).first()[0]
+    })
+
+### session endpoints
 @app.route('/session/<token>/stats/')
 @login_required
 def session_stats(token):
