@@ -12,6 +12,7 @@ import os
 from flask_migrate import Migrate
 from secret import secret_key
 from sqlalchemy.sql import func
+from subprocess import check_output
 
 app = Flask(__name__)
 app.secret_key = secret_key
@@ -226,3 +227,17 @@ def session_stats(token):
         'numrating' : Rating.query.filter_by(session=session.id).count(),
         'avgrating' : db.session.query(func.avg(Rating.rating)).filter(Rating.session == session.id).first()[0]
     })
+
+### administrative
+@app.route('/admin/traffic/<key>/')
+def admin_traffic(key):
+    if key not in configs['adminkeys']:
+        return abort(403)
+
+    with open(os.devnull, 'w') as devnull:
+        if app.config['DEBUG']:
+            answer = check_output(['ssh', 'footloosedirectflask', 'sudo', 'generate_traffic_report'], stderr=devnull).decode().strip()
+        else:
+            answer = check_output(['sudo', 'generate_traffic_report'], stderr=devnull).decode().strip()
+
+    return redirect(answer, code=302)
