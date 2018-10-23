@@ -1,3 +1,4 @@
 language: python
 script:
+  - echo "secret_key = 'BANAAN'" >> secret.py
   - pytest
