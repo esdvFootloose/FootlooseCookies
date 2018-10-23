@@ -4,3 +4,5 @@ pyyaml
 requests
 pytz
 flask-migrate
+pytest
+flask-selfdoc

@@ -13,15 +13,18 @@ from flask_migrate import Migrate
 from secret import secret_key
 from sqlalchemy.sql import func
 from subprocess import check_output
+from flask_selfdoc import Autodoc
 
 app = Flask(__name__)
 app.secret_key = secret_key
 app.wsgi_app = ProxyFix(app.wsgi_app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['FOOKIE_CONFIG_FILE'] = "config.yaml"
 app.jinja_env.add_extension('jinja2.ext.do')
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+auto = Autodoc(app)
 
 configs = {}
 
@@ -61,7 +64,7 @@ class Session(db.Model):
 def init():
     global configs
     db.create_all()
-    with open("config.yaml", "r") as stream:
+    with open(app.config['FOOKIE_CONFIG_FILE'], "r") as stream:
         configs = yaml.load(stream)
 
 
@@ -114,10 +117,13 @@ def index():
 
 @app.route('/cookies/')
 @app.route('/cookies/list/')
+@auto.doc()
 def cookie_list():
+    """lists all cookies with parameters as list of dicts"""
     return jsonify([c.to_dict() for c in Cookie.query.all()])
 
 @app.route('/cookies/suggest/')
+@auto.doc()
 @login_required
 def cookie_suggest():
     user = request.headers.get('USER')
@@ -140,8 +146,11 @@ def cookie_suggest():
     return response
 
 @app.route('/cookies/add/', methods=['PUT'])
+@auto.doc()
 @admin_required
+@auto.doc()
 def cookie_add():
+    """add cookie, formdata: img (image url) and name (name of cookie), admin header auth required"""
     if 'img' not in request.form or 'name' not in request.form:
         return abort(400)
 
@@ -158,9 +167,12 @@ def cookie_add():
     return "OK"
 
 @app.route('/cookies/', methods=['DELETE'])
+@auto.doc()
 @admin_required
 def cookie_admin():
+    """various actions on cookies. for example delete: formdata: name, admin header auth required"""
 
+    #TODO: also  support deletion on cookie by id
     if Cookie.query.filter_by(name=request.form['name']).count() != 1:
         return abort(404)
 
@@ -173,6 +185,7 @@ def cookie_admin():
     return "OK"
 
 @app.route('/cookies/rate/<token>/', methods=['PUT'])
+@auto.doc()
 @login_required
 def cookie_rating(token):
     user = request.headers.get('USER')
@@ -204,6 +217,7 @@ def cookie_rating(token):
     return "OK"
 
 @app.route('/cookies/<int:cookie_id>/stats/')
+@auto.doc()
 @login_required
 def cookie_stats(cookie_id):
     cookie = Cookie.query.filter_by(id=cookie_id).first_or_404()
@@ -216,6 +230,7 @@ def cookie_stats(cookie_id):
 
 ### session endpoints
 @app.route('/session/<token>/stats/')
+@auto.doc()
 @login_required
 def session_stats(token):
     # user = request.headers.get('USER')
@@ -227,6 +242,15 @@ def session_stats(token):
         'numrating' : Rating.query.filter_by(session=session.id).count(),
         'avgrating' : db.session.query(func.avg(Rating.rating)).filter(Rating.session == session.id).first()[0]
     })
+
+### util endpoints
+@app.route('/docs/')
+def documentation():
+    # return auto.html()
+    docs = auto.generate()
+    for ep in docs:
+        ep['args'] = list(ep['args'])
+    return jsonify(docs)
 
 ### administrative
 @app.route('/admin/traffic/<key>/')
